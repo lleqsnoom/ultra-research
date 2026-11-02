@@ -1,0 +1,17 @@
+{
+  "name": "ultraresearch",
+  "version": "1.0.0",
+  "description": "An agent skill for deep research on an unfamiliar topic, scored against a depth bar with quote-checked evidence",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lleqsnoom/ultraresearch.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/*.test.cjs"
+  }
+}
