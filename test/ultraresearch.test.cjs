@@ -133,7 +133,7 @@ describe("ledger sources", () => {
     fs.writeFileSync(evidence(run, "branches/notes.md"), `${QUOTE}\n`);
     assert.match(run.fail("source", "--path", evidence(run, "branches/notes.md"), "--kind", "docs", "--title", "n"), /inside \.ultraresearch/);
     fs.writeFileSync(path.join(run.repo, "notes.md"), `intro\n${QUOTE}\n`);
-    assert.match(run.fail("source", "--path", "notes.md", "--kind", "docs", "--title", "n", "--origin", "Khronos"), /one voice/);
+    assert.match(run.fail("source", "--path", "notes.md", "--kind", "docs", "--title", "n", "--origin", "PostgreSQL"), /one voice/);
     const s = run.led("source", "--path", "notes.md", "--kind", "docs", "--title", "notes").id;
     const q = run.led("question", "--text", "what jumps", "--from", "user").id;
     assert.match(run.fail("claim", "--question", q, "--kind", "definition", "--text", "t", "--source", s, "--quote", "a slow red fox walks under a busy cat"), /not in notes.md/);
@@ -239,8 +239,8 @@ describe("the depth bar", () => {
     run.led("claim", "--question", q, "--kind", "number", "--text", "2x", "--source", src(run, "talk", "talk"), "--quote", QUOTE);
     assert.ok(run.open(q).some((gap) => /no number backed by a tier A source/.test(gap)));
     assert.match(run.fail("experiment", "--command", 'node -e "process.exit(3)"', "--title", "broken"), /exited 3/);
-    const bench = run.led("experiment", "--command", "node -e \"console.log('naive 120ms hashlife 9ms on the same pattern')\"", "--title", "bench");
-    run.led("claim", "--question", q, "--kind", "number", "--text", "13x", "--source", bench.id, "--quote", "naive 120ms hashlife 9ms on");
+    const bench = run.led("experiment", "--command", "node -e \"console.log('offset 480ms keyset 5ms on the same table')\"", "--title", "bench");
+    run.led("claim", "--question", q, "--kind", "number", "--text", "13x", "--source", bench.id, "--quote", "offset 480ms keyset 5ms on");
     assert.deepEqual(run.open(q), []);
     fs.appendFileSync(bench.output, "edited by hand\n");
     assert.equal((await run.checkQuotes(["--all"])).status, 1);
@@ -382,8 +382,8 @@ describe("quote checks", () => {
   it("does not take a page that echoes its own URL as proof, and reads accents and soft hyphens", async () => {
     const run = newRun("standard");
     const q = run.led("question", "--text", "q", "--from", "user").id;
-    const echo = run.led("source", "--url", `${base}/search?q=a+completely+fabricated+claim+about+shaders`, "--kind", "docs", "--title", "s").id;
-    run.led("claim", "--question", q, "--kind", "mechanism", "--text", "x", "--source", echo, "--quote", "a completely fabricated claim about shaders");
+    const echo = run.led("source", "--url", `${base}/search?q=a+completely+fabricated+claim+about+databases`, "--kind", "docs", "--title", "s").id;
+    run.led("claim", "--question", q, "--kind", "mechanism", "--text", "x", "--source", echo, "--quote", "a completely fabricated claim about databases");
     const accents = run.led("source", "--url", `${base}/accents`, "--kind", "paper", "--title", "a").id;
     run.led("claim", "--question", q, "--kind", "history", "--text", "y", "--source", accents, "--quote", "Poincaré wrote about international recurrence");
     const { result } = await run.checkQuotes();
@@ -452,7 +452,7 @@ describe("reviews", () => {
     assert.equal(run.led("review", "--by", "fresh subagent", "--note", "too early").counts, false);
     const claim = run.led("claim", "--question", q, "--kind", "mechanism", "--text", "x", "--source", src(run, "a", "docs"), "--quote", QUOTE).id;
     run.led("cite", "--claim", claim, "--source", src(run, "b", "paper"), "--quote", QUOTE);
-    assert.equal(run.led("review", "--by", "another model", "--note", "missing the mobile case").counts, true);
+    assert.equal(run.led("review", "--by", "another model", "--note", "missing the read-replica case").counts, true);
     assert.equal(run.gate("review").pass, true);
   });
 });
@@ -538,14 +538,14 @@ describe("the research folder", () => {
   it("maps the field and the question tree in map.md", () => {
     const run = newRun("standard");
     const survey = src(run, "survey", "survey");
-    const topic = run.led("topic", "--text", "register pressure", "--from", survey).id;
-    const parent = run.led("question", "--text", "what limits a shader", "--topic", topic).id;
-    run.led("question", "--text", "how is occupancy measured", "--from", survey, "--parent", parent);
+    const topic = run.led("topic", "--text", "row-level security", "--from", survey).id;
+    const parent = run.led("question", "--text", "what limits a tenant query", "--topic", topic).id;
+    run.led("question", "--text", "how is policy overhead measured", "--from", survey, "--parent", parent);
     run.led("render");
     const map = fs.readFileSync(evidence(run, "map.md"), "utf8");
-    assert.match(map, /\*\*T1\*\* register pressure \| S1 \(survey, survey\) \| Q1/);
-    assert.match(map, /^- \*\*Q1\*\* what limits a shader — \*open — waits on Q2\*$/m);
-    assert.match(map, /^ {2}- \*\*Q2\*\* how is occupancy measured/m);
+    assert.match(map, /\*\*T1\*\* row-level security \| S1 \(survey, survey\) \| Q1/);
+    assert.match(map, /^- \*\*Q1\*\* what limits a tenant query — \*open — waits on Q2\*$/m);
+    assert.match(map, /^ {2}- \*\*Q2\*\* how is policy overhead measured/m);
   });
 });
 

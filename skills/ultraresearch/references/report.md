@@ -1,59 +1,38 @@
-# The report that teaches the field
+# The report
 
-`research.md` is the report and nothing else. Replace the stub `start` wrote with the whole report. The reader is
-the user, who may be new to the topic. After reading it, they should know three things: the best answer for their
-situation, why it is the best, and enough of the field to judge the next claim they meet.
+`research.md` holds the report and nothing else, so replace the stub. `UR check-report` checks that:
 
-`UR check-report --dir <dir>` checks:
-
-- the sections the depth needs, each with real content (a heading with one line under it is not a section);
+- each section the depth needs is there, with real content;
 - every `[C<n>]` names a live claim;
-- every in-scope question has a claim cited;
-- every open debate is cited under "Where experts disagree", which every depth then needs;
+- every question has a claim cited;
+- every debate is cited under "Where experts disagree";
 - every input that could not be read is named;
-- the Evidence section links `evidence/ledger.md` and names every claim whose quote was confirmed by hand or never
-  machine-checked.
+- the Evidence section links `evidence/ledger.md` and names every quote that was checked by hand or never checked.
 
-Comments and code blocks are ignored: a citation hidden in `<!-- -->` does not count.
+Text in comments and code blocks doesn't count.
 
 ## Sections
 
-Start with a `#` title, then use these headings (`##`, numbering allowed). `quick` needs only **Answer** and
-**Evidence**. `standard` drops **Next steps** and **Reading path**. Both skip **Where experts disagree** unless the
-ledger records a debate.
+Use `##` headings. `quick` needs only Answer and Evidence. `standard` drops Next steps and Reading path. Any run
+with a debate needs "Where experts disagree".
 
-1. **Answer.** The best current answer *for the user's context*, in a short paragraph, and how sure it is
-   (settled, well supported, contested). Give the recommendation first and the reasons after.
-2. **Glossary.** The 10–20 terms the rest of the report uses, each in one plain sentence. Assume the reader has met
-   none of them, so define each term before the report uses it.
-3. **Map of the field.** The families of approaches and how they relate, drawn from `evidence/map.md`: what each
-   family is for, and what it is not for. A small table or a short list per family.
-4. **Decision guide.** A table, one row per option: when to use it, what it gains (with numbers where they exist),
-   what it costs, its pitfalls, and its claims. This is the part the user will act on.
-5. **Where experts disagree.** Each open debate: both sides, who holds each, and the context in which each is
-   right. Never paper over a disagreement.
-6. **Next steps.** What to do first in the user's project, in order, with how to tell it worked. Include the
-   experiment worth running when a number matters.
-7. **Reading path.** 5–10 sources ordered from first to read to advanced, each with one line on what it teaches.
-   Prefer the sources the ledger rated tier A or B.
-8. **Open questions.** What the run could not settle, and what would settle each: a source, an experiment, or a
-   decision the user must make.
-9. **Evidence.** Link [the ledger](evidence/ledger.md) and [the field map](evidence/map.md), and give the number of
-   sources by tier. List the inputs that were not read and why, the quotes that could not be machine-checked, and
-   who reviewed the run.
+1. **Answer.** The recommendation for the user's context first, then why, and how sure you are.
+2. **Glossary.** 10 to 20 terms, one plain sentence each.
+3. **Map of the field.** The families of approaches, and what each is for and not for.
+4. **Decision guide.** A table: option, when to use it, gains (with numbers), costs, pitfalls, claims.
+5. **Where experts disagree.** Both sides, who holds each, and when each is right.
+6. **Next steps.** In order, each with how to tell it worked.
+7. **Reading path.** 5 to 10 sources, from beginner to advanced.
+8. **Open questions.** What is still unsettled, and what would settle each.
+9. **Evidence.** Link [the ledger](evidence/ledger.md) and [the map](evidence/map.md). Give the sources by tier,
+   the inputs not read, the quotes not checked, and the reviewer.
 
-## Writing rules
+## Rules
 
-- **Cite claims, not vibes.** Back every factual sentence with the claim it rests on: `Half precision cut the
-  shader's register count from 32 to 18 in our test [C14]`. A sentence with no claim is your own reasoning, so
-  mark it as such ("this suggests…"). A citation is a bracket holding only claim ids, `[C14]` or `[C3, C7]`. A
-  bracket with other words in it, such as `[C11 §6.5]`, is safe for anything else.
-- **Lead with what matters for the user.** Cut trivia that doesn't bear on their context, however interesting.
-- **Numbers keep their conditions.** "2.1× faster on a Mali-G78 at 1080p [C22]", not "2× faster".
-- **Say how sure you are,** and why: the number of independent sources, whether a primary source or our own
-  experiment backs it, whether experts dispute it.
-- **Plain words.** Write the Answer and the Glossary at a B2 reading level: short sentences, one idea each, common
-  words, and the glossary's own terms where they are needed.
-- **No new facts at writing time.** A fact that is not in the ledger goes into the ledger first, with its quote.
-
-`UR` in this file stands for `node <skill>/scripts/ultraresearch.mjs`; `<skill>` is the skill's own folder.
+- **Cite every fact:** "Keyset pagination kept page 1,000 under 5 ms, where OFFSET took 480 ms in our test [C14]".
+  `[C3, C7]` is a citation; `[RFC 9110 §9.2]` is not. A sentence without a citation is your own reasoning, so say
+  so.
+- **Numbers keep their conditions:** "2.1× the throughput on Postgres 16, with 1M rows and 50 connections [C22]".
+- **Say how sure you are, and why.**
+- **Use plain words (B2 level)** in the Answer and the Glossary.
+- **Add no new facts here.** Record them in the ledger first.

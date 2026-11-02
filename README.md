@@ -7,7 +7,7 @@ and scores every answer against a depth bar backed by quotes checked on their pa
 npx skills add lleqsnoom/ultraresearch
 ```
 
-Then ask your agent: "ultraresearch the best methods for optimizing fragment shaders on mobile GPUs".
+Then ask your agent: "ultraresearch row-level security vs schema-per-tenant for our Postgres SaaS".
 
 Each run writes `.ultraresearch/<date>-<slug>/research.md`, with its evidence in `evidence/` beside it.
 

@@ -253,7 +253,7 @@ function urlOrigin(raw) {
 /**
  * Who stands behind a source, for counting independent ones: two pages of one vendor's docs are one voice, and so
  * are all of the project's own files and all of the run's own experiments. Only a URL source may name its origin
- * (`--origin "Khronos"`), for two domains with one author.
+ * (`--origin "PostgreSQL"`), for two domains with one author.
  */
 export function originOf(source) {
   if (source.kind === "experiment") return "experiment";
@@ -1062,7 +1062,7 @@ function today(now = new Date()) {
 /** A new research folder, `.ultraresearch/<date>-<slug>/`: the report's stub, and the evidence folder with its ledger. */
 function commandStart(args) {
   const slug = required(args, "slug");
-  if (!SLUG.test(slug)) throw new Error("--slug takes lowercase words joined by hyphens, such as shader-optimization");
+  if (!SLUG.test(slug)) throw new Error("--slug takes lowercase words joined by hyphens, such as pg-multitenancy");
   const goal = required(args, "goal");
   const depth = given(args.depth) ?? "deep";
   const recentYears = given(args["recent-years"]) === undefined ? undefined : int(args["recent-years"], "--recent-years");
@@ -1615,7 +1615,7 @@ Checking and scoring
   render                                               write evidence/ledger.md, map.md and rounds.md
   check-report                                         is research.md a complete report; exit 1 if not
 
-Any write takes --agent <label> to record which researcher made it, such as main/gpu-branch/helper-2.
+Any write takes --agent <label> to record which researcher made it, such as main/rls/helper-2.
 `;
 }
 
