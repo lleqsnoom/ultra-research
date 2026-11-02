@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * ultraresearch scores what a deep run needs: independent sources, a primary one, how it works and where it fails,
+ * ultra-research scores what a deep run needs: independent sources, a primary one, how it works and where it fails,
  * quotes found on their pages, disputes settled, a field map covered, a reviewer, and a report that teaches it. The
  * run stops only when all of it holds, or at its cap.
  *
@@ -17,7 +17,7 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 
-const LEDGER = path.join(__dirname, "..", "skills", "ultraresearch", "scripts", "ultraresearch.mjs");
+const LEDGER = path.join(__dirname, "..", "skills", "ultra-research", "scripts", "ultra-research.mjs");
 const YEAR = new Date().getUTCFullYear();
 const QUOTE = "the quick brown fox jumps over the lazy dog";
 const OTHER = "a second sentence that this page also carries in full";
@@ -75,7 +75,7 @@ function startIn(repo, extra = []) {
 
 /** A git repository with a started research run at `depth`. */
 function newRun(depth = "deep", extra = []) {
-  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "ultraresearch-"));
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "ultra-research-"));
   execFileSync("git", ["init", "-q"], { cwd: repo });
   const dir = startIn(repo, ["--depth", depth, "--cap", "6", ...extra]);
   const led = (...args) => ok(LEDGER, repo, [args[0], "--dir", dir, ...args.slice(1)]);
@@ -131,7 +131,7 @@ describe("ledger sources", () => {
     const run = newRun();
     assert.match(run.fail("source", "--path", "nope.md", "--kind", "docs", "--title", "n"), /not found/);
     fs.writeFileSync(evidence(run, "branches/notes.md"), `${QUOTE}\n`);
-    assert.match(run.fail("source", "--path", evidence(run, "branches/notes.md"), "--kind", "docs", "--title", "n"), /inside \.ultraresearch/);
+    assert.match(run.fail("source", "--path", evidence(run, "branches/notes.md"), "--kind", "docs", "--title", "n"), /inside \.ultra-research/);
     fs.writeFileSync(path.join(run.repo, "notes.md"), `intro\n${QUOTE}\n`);
     assert.match(run.fail("source", "--path", "notes.md", "--kind", "docs", "--title", "n", "--origin", "PostgreSQL"), /one voice/);
     const s = run.led("source", "--path", "notes.md", "--kind", "docs", "--title", "notes").id;
@@ -505,7 +505,7 @@ describe("continuing an earlier run", () => {
 describe("the research folder", () => {
   it("holds the report and nothing beside the evidence folder", async () => {
     const run = newRun("quick");
-    assert.match(path.relative(run.repo, run.dir), /^\.ultraresearch[/\\]\d{4}-\d{2}-\d{2}-topic$/);
+    assert.match(path.relative(run.repo, run.dir), /^\.ultra-research[/\\]\d{4}-\d{2}-\d{2}-topic$/);
     const q = run.led("question", "--text", "q", "--from", "user").id;
     const bench = run.led("experiment", "--command", "node -e \"console.log('the bench printed this line')\"", "--title", "bench").id;
     run.led("claim", "--question", q, "--kind", "number", "--text", "x", "--source", bench, "--quote", "the bench printed this line");
@@ -528,7 +528,7 @@ describe("the research folder", () => {
   });
 
   it("starts in the repository's root from a folder inside it", () => {
-    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "ultraresearch-"));
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "ultra-research-"));
     execFileSync("git", ["init", "-q"], { cwd: repo });
     fs.mkdirSync(path.join(repo, "src", "deep"), { recursive: true });
     const dir = path.resolve(path.join(repo, "src", "deep"), ok(LEDGER, path.join(repo, "src", "deep"), ["start", "--slug", "x", "--goal", "g"]).dir);
@@ -601,7 +601,7 @@ describe("rounds", () => {
 
 describe("the command line", () => {
   it("prints usage on --help and refuses a folder that is not a research folder", () => {
-    assert.match(exec(LEDGER, os.tmpdir(), ["--help"]).stdout, /Usage: node ultraresearch\.mjs/);
+    assert.match(exec(LEDGER, os.tmpdir(), ["--help"]).stdout, /Usage: node ultra-research\.mjs/);
     const out = exec(LEDGER, os.tmpdir(), ["status", "--dir", os.tmpdir()]);
     assert.equal(out.status, 1);
     assert.match(JSON.parse(out.stderr).error, /not a research folder/);

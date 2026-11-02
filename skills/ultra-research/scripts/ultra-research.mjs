@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * ultraresearch — what a research run knows, how well it knows it, and when it may stop.
+ * ultra-research — what a research run knows, how well it knows it, and when it may stop.
  *
- * A research run is a folder `.ultraresearch/<date>-<slug>/` holding the report, `research.md`, and nothing else
+ * A research run is a folder `.ultra-research/<date>-<slug>/` holding the report, `research.md`, and nothing else
  * beside `evidence/`. The evidence is a log, `evidence/ledger.jsonl`: the question tree, every source opened, every
  * claim with the verbatim quote that backs it, the disputes, the field map, the reviews, the inputs the user named and
  * the rounds. Each write appends one event under a lock, so researchers working in parallel never lose each other's
@@ -17,7 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-export const RUNS_DIR = ".ultraresearch";
+export const RUNS_DIR = ".ultra-research";
 export const EVIDENCE_DIR = "evidence";
 export const LEDGER_FILE = "ledger.jsonl";
 export const REPORT_FILE = "research.md";
@@ -266,7 +266,7 @@ export function yearOf(source) {
   return match ? Number(match[1]) : null;
 }
 
-/** The project a research folder belongs to: the folder holding its `.ultraresearch/`. */
+/** The project a research folder belongs to: the folder holding its `.ultra-research/`. */
 function projectRoot(dir) {
   let current = path.resolve(dir);
   while (current !== path.dirname(current)) {
@@ -312,7 +312,7 @@ const sha256 = (text) => crypto.createHash("sha256").update(text).digest("hex");
 
 export function readEvents(dir) {
   const file = path.join(evidenceOf(dir), LEDGER_FILE);
-  if (!fs.existsSync(file)) throw new Error(`no ${EVIDENCE_DIR}/${LEDGER_FILE} in ${dir}: \`ultraresearch.mjs start\` makes a research folder`);
+  if (!fs.existsSync(file)) throw new Error(`no ${EVIDENCE_DIR}/${LEDGER_FILE} in ${dir}: \`ultra-research.mjs start\` makes a research folder`);
   const events = [];
   const bad = [];
   fs.readFileSync(file, "utf8")
@@ -433,7 +433,7 @@ export function replay(events) {
       led.errors.push(`event ${i + 1} (${event?.t ?? "?"}) ${err.message}`);
     }
   });
-  if (!led.bar) led.errors.push("no init event: the ledger was not made by `ultraresearch.mjs start`");
+  if (!led.bar) led.errors.push("no init event: the ledger was not made by `ultra-research.mjs start`");
   return led;
 }
 
@@ -799,7 +799,7 @@ async function remoteText(url, timeoutMs) {
     response = await fetch(fetchable(url), {
       redirect: "follow",
       signal: AbortSignal.timeout(timeoutMs),
-      headers: { "user-agent": "Mozilla/5.0 (compatible; ultraresearch quote check)", accept: "text/html,text/plain,application/pdf,*/*" },
+      headers: { "user-agent": "Mozilla/5.0 (compatible; ultra-research quote check)", accept: "text/html,text/plain,application/pdf,*/*" },
     });
   } catch (err) {
     return { result: "unverifiable", reason: `fetch failed (${err.cause?.code ?? err.name})` };
@@ -872,7 +872,7 @@ function where(source) {
   return `${cell(source.title)} — \`${source.path}${source.line ? `:${source.line}` : ""}\``;
 }
 
-const generated = (verdict, led) => `Rendered from \`${LEDGER_FILE}\` by ultraresearch.mjs — depth **${led.depth}**, score ${verdict.score}, ${verdict.answered}/${verdict.questions} questions answered. Do not edit by hand.`;
+const generated = (verdict, led) => `Rendered from \`${LEDGER_FILE}\` by ultra-research.mjs — depth **${led.depth}**, score ${verdict.score}, ${verdict.answered}/${verdict.questions} questions answered. Do not edit by hand.`;
 
 export function render(led, { report = "", now = new Date() } = {}) {
   const verdict = evaluate(led, { report, now });
@@ -998,7 +998,7 @@ function int(value, flag) {
 function requireDir(args) {
   const raw = required(args, "dir");
   const dir = path.basename(path.resolve(raw)) === EVIDENCE_DIR && !fs.existsSync(path.join(raw, EVIDENCE_DIR)) ? path.dirname(path.resolve(raw)) : raw;
-  if (!fs.existsSync(path.join(evidenceOf(dir), LEDGER_FILE))) throw new Error(`--dir ${raw} is not a research folder (\`ultraresearch.mjs start\` makes one)`);
+  if (!fs.existsSync(path.join(evidenceOf(dir), LEDGER_FILE))) throw new Error(`--dir ${raw} is not a research folder (\`ultra-research.mjs start\` makes one)`);
   return dir;
 }
 
@@ -1059,7 +1059,7 @@ function today(now = new Date()) {
   return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
 }
 
-/** A new research folder, `.ultraresearch/<date>-<slug>/`: the report's stub, and the evidence folder with its ledger. */
+/** A new research folder, `.ultra-research/<date>-<slug>/`: the report's stub, and the evidence folder with its ledger. */
 function commandStart(args) {
   const slug = required(args, "slug");
   if (!SLUG.test(slug)) throw new Error("--slug takes lowercase words joined by hyphens, such as pg-multitenancy");
@@ -1570,9 +1570,9 @@ const COMMANDS = {
 };
 
 function usage() {
-  return `ultraresearch — deep research scored against a depth bar, one round at a time.
+  return `ultra-research — deep research scored against a depth bar, one round at a time.
 
-Usage: node ultraresearch.mjs <command> --dir <research folder> [flags]
+Usage: node ultra-research.mjs <command> --dir <research folder> [flags]
 Every command but start and list takes --dir, the folder start printed. Writes are safe from parallel agents.
 A research folder holds research.md (the report) and evidence/ (ledger.jsonl, ledger.md, map.md, rounds.md,
 branches/, experiments/).
@@ -1580,7 +1580,7 @@ branches/, experiments/).
 The run
   start         --slug <words-with-hyphens> --goal "<what the answer is for>" [--depth quick|standard|deep]
                 [--cap <rounds, default ${DEFAULT_CAP}>] [--recent-years <n>] [--from <earlier research folder>] [--root <project>]
-                                                        makes .ultraresearch/<date>-<slug>/ in the project
+                                                        makes .ultra-research/<date>-<slug>/ in the project
   list          [--root <project>]                     earlier research in this project, newest first
   round         --change "<what this round did>"       score and record a round; prints next: iterate|done|escalate
   verify                                               re-score; exit 0 only when it is 1 and the last round said done

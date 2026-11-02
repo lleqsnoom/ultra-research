@@ -24,9 +24,9 @@ Size the fan-out to the work; `quick` needs no agents. On a host without agents,
 ## Brief
 
 ```text
-You are a <scout | branch researcher | helper> in an ultraresearch run.
+You are a <scout | branch researcher | helper> in an ultra-research run.
 Run folder: <dir>.
-Tool: node <skill>/scripts/ultraresearch.mjs <command> --dir <dir> --agent <label> (--help lists the commands).
+Tool: node <skill>/scripts/ultra-research.mjs <command> --dir <dir> --agent <label> (--help lists the commands).
 Label: <main/...>. Piece: <questions | map source | sources | claim>. Depth: <depth>.
 User context: <2 lines>.
 

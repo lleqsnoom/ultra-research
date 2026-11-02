@@ -1,12 +1,12 @@
 {
-  "name": "ultraresearch",
-  "version": "1.1.1",
+  "name": "ultra-research",
+  "version": "2.0.0",
   "description": "An agent skill for deep research on an unfamiliar topic, scored against a depth bar with quote-checked evidence",
   "license": "MIT",
   "private": true,
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lleqsnoom/ultraresearch.git"
+    "url": "git+https://github.com/lleqsnoom/ultra-research.git"
   },
   "engines": {
     "node": ">=20"

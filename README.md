@@ -1,4 +1,4 @@
-# ultraresearch
+# ultra-research
 
 **A mountain of sources in. Pure knowledge out.**
 
@@ -10,21 +10,21 @@ fact traced to where it came from.
 **Claude Code**
 
 ```bash
-npx skills add lleqsnoom/ultraresearch -g -a claude-code
+npx skills add lleqsnoom/ultra-research -g -a claude-code
 ```
 
 ```text
-/ultraresearch row-level security vs schema-per-tenant for our Postgres SaaS
+/ultra-research row-level security vs schema-per-tenant for our Postgres SaaS
 ```
 
 **Codex**
 
 ```bash
-npx skills add lleqsnoom/ultraresearch -g -a codex
+npx skills add lleqsnoom/ultra-research -g -a codex
 ```
 
 ```text
-$ultraresearch row-level security vs schema-per-tenant for our Postgres SaaS
+$ultra-research row-level security vs schema-per-tenant for our Postgres SaaS
 ```
 
-You get `.ultraresearch/<date>-<slug>/research.md`. Needs Node.js 20+. MIT
+You get `.ultra-research/<date>-<slug>/research.md`. Needs Node.js 20+. MIT

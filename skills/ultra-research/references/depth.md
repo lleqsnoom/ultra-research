@@ -25,7 +25,7 @@ Sources count by origin, meaning who stands behind them, and the script derives 
 - The project's own files count as one voice, and the run's experiments as one more.
 - `standard` and `deep` also need a source from outside the project.
 - Use `--origin` only for one author across two domains, never to make one author count twice.
-- Files under `.ultraresearch/` are never sources.
+- Files under `.ultra-research/` are never sources.
 
 ## What a question needs
 

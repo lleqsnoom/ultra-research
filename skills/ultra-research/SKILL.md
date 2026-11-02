@@ -1,26 +1,26 @@
 ---
-name: ultraresearch
+name: ultra-research
 description: Deep research on a topic you don't know yet. It maps the field, sends agents to read in parallel, and answers every question to a depth bar that a script checks (independent and primary sources, quotes found on the page, settled disputes). Use for "research X", "deep dive into Y", "best methods for Z", "state of the art in W".
 license: MIT
 compatibility: Node.js 20+ and web access; pdftotext is optional, for checking PDFs.
 metadata:
-  version: "1.1.1"
+  version: "2.0.0"
 ---
 
-# Ultraresearch
+# Ultra Research
 
 **A mountain of sources in. Pure knowledge out.** Your research buddy browses papers, docs, specs and talks, then
 distills them into one clear report, with every fact traced to where it came from.
 
 Map the field first, so the questions come from how experts divide the topic. Answer each question until
-`scripts/ultraresearch.mjs` says it clears the depth bar. Stop when new sources add nothing.
+`scripts/ultra-research.mjs` says it clears the depth bar. Stop when new sources add nothing.
 
-`UR` means `node <skill>/scripts/ultraresearch.mjs`, run from the project root. `<dir>` is the folder `UR start`
+`UR` means `node <skill>/scripts/ultra-research.mjs`, run from the project root. `<dir>` is the folder `UR start`
 prints. `UR --help` lists the commands.
 
 ## Output
 
-`.ultraresearch/<date>-<slug>/research.md` is the report. Nothing else sits beside it; everything else goes in
+`.ultra-research/<date>-<slug>/research.md` is the report. Nothing else sits beside it; everything else goes in
 `evidence/` (ledger, map, rounds, branch notes, experiments). Never edit the generated files by hand.
 
 ## Rules
