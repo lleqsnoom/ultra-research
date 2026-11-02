@@ -4,10 +4,13 @@ description: Deep research on a topic you don't know yet. It maps the field, sen
 license: MIT
 compatibility: Node.js 20+ and web access; pdftotext is optional, for checking PDFs.
 metadata:
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # Ultraresearch
+
+**A mountain of sources in. Pure knowledge out.** Your research buddy browses papers, docs, specs and talks, then
+distills them into one clear report, with every fact traced to where it came from.
 
 Map the field first, so the questions come from how experts divide the topic. Answer each question until
 `scripts/ultraresearch.mjs` says it clears the depth bar. Stop when new sources add nothing.
