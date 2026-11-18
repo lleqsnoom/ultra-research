@@ -28,6 +28,8 @@ const YEAR = new Date().getUTCFullYear();
 const QUOTE = "the quick brown fox jumps over the lazy dog";
 const OTHER = "a second sentence that this page also carries in full";
 const FILLER = Array.from({ length: 200 }, (_, i) => `word${i}`).join(" ");
+/** A Word document whose one paragraph says QUOTE, split over two runs as Word splits text. */
+const DOCX = Buffer.from("UEsDBBQACAAIAGi1cl0AAAAAAAAAAAAAAAARACAAd29yZC9kb2N1bWVudC54bWx1eAsAAQToAwAABOgDAABVVA0AB/Ub/mr1G/5q9Rv+am1QzU7DMAx+FSsHbjSFA0Kl7cRlLwA8QJZ4bbfGzpyUbjw9CQIxJC6fZfn7sd1uzn6Gd5Q4MXXqrqoVIFl2Ew2denvd3j6qTd+ujWO7eKQEmU+xWTs1phQaraMd0ZtYcUDKsz2LNym3MuiVxQVhizFmOz/r+7p+0N5MpIrljt2l1FBACqT+JaA5ogBxwthAGhFOy2SPsBNeCfZ8hlYXYkG5Eh4WHyJwvuRLNJuPCzgeqj9s/R12nfgMES2Tg2DEDGLCCDfGhyfwLPifXP9srn+/0n8CUEsHCBklQqHUAAAASAEAAFBLAQIUAxQACAAIAGi1cl0ZJUKh1AAAAEgBAAARABgAAAAAAAAAAACkgQAAAAB3b3JkL2RvY3VtZW50LnhtbHV4CwABBOgDAAAE6AMAAFVUBQAB9Rv+alBLBQYAAAAAAQABAFcAAAAzAQAAAAA=", "base64");
 
 let server;
 let base;
@@ -40,6 +42,15 @@ before(async () => {
     if (url.pathname === "/ja") return res.end(`<html><body><p>口の周りに一切頂<br>点を置かずに、非常に長い三角形で\n口の周りを構成してあげます。</p> ${FILLER}</body></html>`);
     if (url.pathname === "/script-only") return res.end(`<html><body><script>document.write("${QUOTE}")</script></body></html>`);
     if (url.pathname === "/search") return res.end(`<html><body><h1>Results for ${url.searchParams.get("q")}</h1> ${FILLER}</body></html>`);
+    if (url.pathname === "/botwall") return res.end("<html><body><h1>Making sure you're not a bot!</h1><p>Protected by Anubis</p></body></html>");
+    if (url.pathname === "/image.png") {
+      res.setHeader("content-type", "image/png");
+      return res.end("PNG");
+    }
+    if (url.pathname === "/deck.docx") {
+      res.setHeader("content-type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      return res.end(DOCX);
+    }
     if (url.pathname === "/forbidden") {
       res.statusCode = 403;
       return res.end("no");
@@ -773,6 +784,22 @@ describe("reading a quote as it is written", () => {
     const waits = await claim(third, QUOTE, { ULTRA_RESEARCH_READERS: "captions", ULTRA_RESEARCH_YTDLP: broken });
     assert.equal(waits.result.check, "unverifiable");
     assert.match(waits.result.reason, /yt-dlp failed \(Unable to download video subtitles: HTTP Error 429/);
+  });
+
+  it("reads the text of an Office file, and takes neither a bot check nor an image for the source", async () => {
+    const run = newRun("standard");
+    const q = run.led("question", "--text", "q", "--from", "user").id;
+    const claim = async (page, kind) => {
+      const source = run.led("source", "--url", `${base}/${page}`, "--kind", kind, "--title", page).id;
+      return (await run.live(["claim", "--question", q, "--kind", "mechanism", "--text", page, "--source", source, "--quote", QUOTE])).result;
+    };
+    const wall = await claim("botwall", "docs");
+    assert.deepEqual([wall.check, /a bot-check page answered instead of the source/.test(wall.reason)], ["unverifiable", true]);
+    const image = await claim("image.png", "data");
+    assert.deepEqual([image.check, /a media file \(image\/png\) holds no text/.test(image.reason)], ["unverifiable", true]);
+    const deck = await claim("deck.docx", "talk");
+    if (spawnSync("unzip", ["-v"]).status === 0) assert.equal(deck.check, "found", "a document's text is in the zip it is");
+    else assert.match(deck.reason, /install unzip/);
   });
 
   it("matches a quote in a script written without spaces, however its source wrapped the line", async () => {
