@@ -7,6 +7,11 @@
  *
  * An adversarial review of the scoring reached a deep score of 1 with no web source, with made-up quotes, with one
  * question covering the whole map and with five copies of one page as saturation; each of those has a test here.
+ *
+ * A review of thirteen real runs then showed what the script itself got wrong: pages its checker could not read,
+ * voices counted by web host, a saturation gate met by a closing pass, runs with no budget, quotes never read
+ * against their claims, typos in flags dropped without a word, a review that was one line. Rules 2 answer each,
+ * and each has a test below; a ledger made before them keeps the rules it was made under.
  */
 
 const { describe, it, before, after } = require("node:test");
@@ -16,6 +21,7 @@ const fs = require("node:fs");
 const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 const LEDGER = path.join(__dirname, "..", "skills", "ultra-research", "scripts", "ultra-research.mjs");
 const YEAR = new Date().getUTCFullYear();
@@ -31,6 +37,7 @@ before(async () => {
     if (url.pathname.startsWith("/q/")) return res.end(`<html><body><p>${QUOTE}.</p><p>${OTHER}.</p> ${FILLER}</body></html>`);
     if (url.pathname === "/good") return res.end(`<html><body><p>The <em>quick</em> brown&nbsp;fox &mdash; jumps over the <b>lazy</b> dog.</p><script>var no = "${OTHER}";</script> ${FILLER}</body></html>`);
     if (url.pathname === "/accents") return res.end(`<html><body><p>Poincar&eacute; wrote about inter&shy;national recurrence in dynamical systems.</p> ${FILLER}</body></html>`);
+    if (url.pathname === "/ja") return res.end(`<html><body><p>口の周りに一切頂<br>点を置かずに、非常に長い三角形で\n口の周りを構成してあげます。</p> ${FILLER}</body></html>`);
     if (url.pathname === "/script-only") return res.end(`<html><body><script>document.write("${QUOTE}")</script></body></html>`);
     if (url.pathname === "/search") return res.end(`<html><body><h1>Results for ${url.searchParams.get("q")}</h1> ${FILLER}</body></html>`);
     if (url.pathname === "/forbidden") {
@@ -41,6 +48,8 @@ before(async () => {
       res.statusCode = 404;
       return res.end("not found");
     }
+    // A stand-in for the Wayback Machine: it still has the page that is gone.
+    if (url.pathname.startsWith("/archive/web/")) return res.end(`<html><body><p>${QUOTE}.</p><p>${OTHER}.</p> ${FILLER}</body></html>`);
     res.end(`<html><body><p>${FILLER}</p></body></html>`);
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -48,8 +57,23 @@ before(async () => {
 });
 after(() => server.close());
 
+/** Tests read pages with the plain fetch reader only, so none starts a browser or asks the real archive. */
+const ENV = { ...process.env, ULTRA_RESEARCH_READERS: "fetch" };
+
 function exec(script, cwd, args, input) {
-  return spawnSync(process.execPath, [script, ...args], { cwd, encoding: "utf8", input });
+  return spawnSync(process.execPath, [script, ...args], { cwd, encoding: "utf8", input, env: ENV });
+}
+
+/** A command that reads a page from this process's server, so it runs without blocking the event loop. */
+function execAsync(cwd, args, env = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [LEDGER, ...args], { cwd, env: { ...ENV, ...env } });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.on("close", (status) => resolve({ status, stdout, stderr }));
+  });
 }
 
 function ok(script, cwd, args, input) {
@@ -61,7 +85,7 @@ function ok(script, cwd, args, input) {
 /** check-quotes fetches from this process's server, so it runs without blocking the event loop. */
 function checkQuotesIn(repo, dir, extra = []) {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, [LEDGER, "check-quotes", "--dir", dir, ...extra], { cwd: repo });
+    const child = spawn(process.execPath, [LEDGER, "check-quotes", "--dir", dir, ...extra], { cwd: repo, env: ENV });
     let stdout = "";
     child.stdout.on("data", (chunk) => (stdout += chunk));
     child.on("close", (status) => resolve({ status, result: JSON.parse(stdout) }));
@@ -78,20 +102,28 @@ function newRun(depth = "deep", extra = []) {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), "ultra-research-"));
   execFileSync("git", ["init", "-q"], { cwd: repo });
   const dir = startIn(repo, ["--depth", depth, "--cap", "6", ...extra]);
-  const led = (...args) => ok(LEDGER, repo, [args[0], "--dir", dir, ...args.slice(1)]);
+  // A synchronous command cannot read a page from this process's server, so its web quotes wait for check-quotes.
+  const later = (args) => (["claim", "cite"].includes(args[0]) ? ["--no-check"] : []);
+  const led = (...args) => ok(LEDGER, repo, [args[0], "--dir", dir, ...args.slice(1), ...later(args)]);
   const fail = (...args) => {
-    const out = exec(LEDGER, repo, [args[0], "--dir", dir, ...args.slice(1)]);
+    const out = exec(LEDGER, repo, [args[0], "--dir", dir, ...args.slice(1), ...later(args)]);
     assert.notEqual(out.status, 0, `expected ${args[0]} to be refused`);
     return JSON.parse(out.stderr).error;
+  };
+  /** The same command with its quote read as it is written, as an agent runs it. */
+  const live = async (args, env) => {
+    const out = await execAsync(repo, [args[0], "--dir", dir, ...args.slice(1)], env);
+    return { status: out.status, result: out.status === 0 ? JSON.parse(out.stdout) : null, error: out.status === 0 ? null : JSON.parse(out.stderr).error };
   };
   const score = () => led("score");
   const gate = (name) => score().gates.find((g) => g.name === name);
   const open = (id) => score().open.find((question) => question.id === id)?.gaps ?? [];
-  return { repo, dir, led, fail, score, gate, open, checkQuotes: (extra) => checkQuotesIn(repo, dir, extra) };
+  const events = () => fs.readFileSync(path.join(dir, "evidence", "ledger.jsonl"), "utf8").trim().split("\n").map(JSON.parse);
+  return { repo, dir, led, fail, live, score, gate, open, events, checkQuotes: (extra) => checkQuotesIn(repo, dir, extra) };
 }
 
 /** A page on the test server that carries QUOTE and OTHER, under an author of its own. */
-const src = (run, name, kind, date = String(YEAR)) => run.led("source", "--url", `${base}/q/${name}`, "--kind", kind, "--title", name, "--date", date, "--origin", name).id;
+const src = (run, name, kind, date = String(YEAR)) => run.led("source", "--url", `${base}/q/${name}`, "--kind", kind, "--title", name, "--date", date, "--authors", name).id;
 
 /** The agent's report: research.md is the report and nothing else. */
 const writeReport = (run, body) => fs.writeFileSync(path.join(run.dir, "research.md"), `# The topic\n\n${body}\n`);
@@ -125,6 +157,32 @@ describe("ledger sources", () => {
     assert.equal(origin("https://arxiv.org/pdf/hep-th/9901002"), "arxiv:hep-th/9901002");
     assert.notEqual(origin("https://doi.org/10.1000/one"), origin("https://doi.org/10.1000/two"), "each DOI is its own work");
     assert.equal(origin("https://web.archive.org/web/2020/https://vendor.com/old"), "vendor.com", "an archived page keeps its author");
+    assert.notEqual(origin("https://www.youtube.com/watch?v=aaaaaaaaaaa"), origin("https://www.youtube.com/watch?v=bbbbbbbbbbb"), "two talks on YouTube");
+    assert.equal(origin("https://youtu.be/aaaaaaaaaaa"), origin("https://www.youtube.com/watch?v=aaaaaaaaaaa"), "one video under two addresses");
+    assert.notEqual(origin("https://dl.acm.org/doi/10.1145/1111111.2222222"), origin("https://dl.acm.org/doi/pdf/10.1145/3333333.4444444"), "two papers in one digital library");
+    assert.equal(origin("https://dl.acm.org/doi/abs/10.1145/1111111.2222222"), origin("https://doi.org/10.1145/1111111.2222222"), "a paper by its DOI, wherever it is read");
+    assert.notEqual(origin("https://gdcvault.com/play/1026009/one"), origin("https://gdcvault.com/play/1027000/two"), "two GDC talks");
+    assert.match(run.fail("source", "--url", "https://x.example.com/a", "--kind", "docs", "--title", "x", "--origin", "X"), /--origin is gone: name the people with --authors/);
+  });
+
+  it("tells voices apart by who wrote a source, not by where it sits", async () => {
+    const { voiceGroups } = await import(pathToFileURL(LEDGER).href);
+    const voices = (...sources) => new Set(voiceGroups(sources.map(([url, names]) => ({ url, kind: "paper", ...names })))).size;
+    const pg = "https://www.postgresql.org";
+    assert.equal(voices([`${pg}/docs/a`, { org: "PostgreSQL" }], [`${pg}/docs/b`, { org: "PostgreSQL Global Development Group" }], [`${pg}/docs/c`, {}]), 1, "pages that name no people speak for their site, however its owner is spelled");
+    assert.equal(voices([`${pg}/list/1`, { authors: "Hannu Krosing" }], [`${pg}/list/2`, { authors: "Pavel Stehule" }]), 2, "two people on one site");
+    assert.equal(voices(["https://arxiv.org/abs/2101.00001", { authors: "Ada Lovelace, Alan Turing" }], ["https://arxiv.org/abs/2101.00002", { authors: "A. Lovelace and Grace Hopper" }], ["https://lab.example.edu/p3", { authors: "Grace Hopper (Yale)" }]), 1, "papers that share an author are one voice, across sites");
+    assert.equal(voices(["https://arxiv.org/abs/2101.00003", { authors: "Wei Zhang" }], ["https://arxiv.org/abs/2101.00004", { authors: "Wen Zhang" }]), 2, "an initial matches a name, two names do not match each other");
+    assert.equal(voices(["https://learn.vendor.com/a", { org: "Vendor Inc." }], ["https://devblogs.vendor.io/b", { org: "Vendor" }]), 1, "one organisation on two domains");
+    assert.equal(voices(["https://a.example.com/x", { origin: "Team One" }], ["https://b.example.com/y", { origin: "Team One" }], ["https://b.example.com/z", { origin: "Team Two" }]), 2, "an origin carried over from the first rules still tells voices apart");
+  });
+
+  it("points at a site that carries sources under different authors", () => {
+    const run = newRun();
+    for (const [page, author] of [["a", "Ada Lovelace"], ["b", "Alan Turing"]]) run.led("source", "--url", `https://docs.example.org/${page}`, "--kind", "docs", "--title", page, "--authors", author);
+    assert.match(run.score().warnings.join("; "), /example\.org carries 2 different authors \(S1, S2\)/);
+    run.led("reclassify", "--source", "S2", "--authors", "Ada Lovelace", "--reason", "the same author after all");
+    assert.equal(run.score().warnings, undefined);
   });
 
   it("refuses a local source that is not there, a run's own notes, and a misquote of a file that is there", () => {
@@ -133,7 +191,7 @@ describe("ledger sources", () => {
     fs.writeFileSync(evidence(run, "branches/notes.md"), `${QUOTE}\n`);
     assert.match(run.fail("source", "--path", evidence(run, "branches/notes.md"), "--kind", "docs", "--title", "n"), /inside \.ultra-research/);
     fs.writeFileSync(path.join(run.repo, "notes.md"), `intro\n${QUOTE}\n`);
-    assert.match(run.fail("source", "--path", "notes.md", "--kind", "docs", "--title", "n", "--origin", "PostgreSQL"), /one voice/);
+    assert.match(run.fail("source", "--path", "notes.md", "--kind", "docs", "--title", "n", "--org", "PostgreSQL"), /one voice/);
     const s = run.led("source", "--path", "notes.md", "--kind", "docs", "--title", "notes").id;
     const q = run.led("question", "--text", "what jumps", "--from", "user").id;
     assert.match(run.fail("claim", "--question", q, "--kind", "definition", "--text", "t", "--source", s, "--quote", "a slow red fox walks under a busy cat"), /not in notes.md/);
@@ -199,7 +257,7 @@ describe("the depth bar", () => {
   it("counts a quote on a page nobody could read only once confirmed by hand, and never on that alone", async () => {
     const run = newRun();
     const q = await answeredDeep(run);
-    const locked = run.led("source", "--url", `${base}/forbidden`, "--kind", "paper", "--title", "locked", "--date", String(YEAR), "--origin", "locked").id;
+    const locked = run.led("source", "--url", `${base}/forbidden`, "--kind", "paper", "--title", "locked", "--date", String(YEAR), "--authors", "locked").id;
     const claim = run.led("claim", "--question", q, "--kind", "comparison", "--text", "c", "--source", locked, "--quote", "a sentence behind a paywall nobody can fetch").id;
     assert.match(run.fail("confirm-quote", "--claim", claim, "--source", locked, "--how", "trust me"), /run check-quotes first/);
     assert.equal((await run.checkQuotes()).result.unverifiable, 1);
@@ -306,19 +364,22 @@ describe("disputes", () => {
 });
 
 describe("saturation", () => {
-  it("counts the authors among the newest strong sources that only confirmed what the ledger held", () => {
+  it("shows how many of the newest authors only confirmed what the ledger held, and no longer gates on it", () => {
     const run = newRun("standard");
     const q = run.led("question", "--text", "q", "--from", "user").id;
     const claim = run.led("claim", "--question", q, "--kind", "mechanism", "--text", "x", "--source", src(run, "first", "docs"), "--quote", QUOTE).id;
-    assert.equal(run.gate("saturation").pass, false);
+    const streak = () => run.score().saturation.streak;
+    assert.equal(run.gate("saturation"), undefined, "a closing pass could always supply five confirming sources");
+    assert.equal(streak(), 0);
     for (const v of [1, 2, 3, 4, 5]) run.led("cite", "--claim", claim, "--source", run.led("source", "--url", `https://same.example.org/page?v=${v}`, "--kind", "paper", "--title", `v${v}`).id, "--quote", QUOTE);
-    assert.equal(run.gate("saturation").pass, false, "five copies of one site are one author");
+    assert.equal(streak(), 1, "five copies of one site are one author");
     for (const name of ["two", "three"]) run.led("cite", "--claim", claim, "--source", src(run, name, "paper"), "--quote", QUOTE);
     src(run, "unread", "paper");
     src(run, "some-blog", "article");
-    assert.equal(run.gate("saturation").pass, true, run.gate("saturation").problems.join("; "));
+    assert.equal(streak(), 3);
     run.led("question", "--text", "a new angle", "--from", src(run, "fresh", "paper"));
-    assert.equal(run.gate("saturation").pass, false, "a source that raised a question is new information");
+    assert.equal(streak(), 0, "a source that raised a question is new information");
+    assert.match(ok(LEDGER, run.repo, ["status", "--dir", run.dir]), /saturation \(an indicator, not a gate\): 0\/3/);
   });
 });
 
@@ -345,6 +406,9 @@ describe("the field map", () => {
     const docs = run.led("source", "--url", "https://docs.vendor.com/toc", "--kind", "docs", "--title", "toc").id;
     for (const from of [a, b, docs]) run.led("topic", "--text", `from ${from}`, "--from", from);
     assert.match(run.gate("map").problems.join("; "), /map drawn from 1\/2 surveys/);
+    run.led("reclassify", "--source", a, "--authors", "Ada Lovelace", "--reason", "a survey by one author");
+    run.led("reclassify", "--source", b, "--authors", "Alan Turing", "--reason", "and one by another");
+    assert.doesNotMatch(run.gate("map").problems.join("; "), /map drawn from/);
   });
 });
 
@@ -446,13 +510,37 @@ describe("named inputs", () => {
 });
 
 describe("reviews", () => {
-  it("counts a review only once most of the tree was answered", () => {
-    const run = newRun("standard");
+  function answered(run) {
     const q = run.led("question", "--text", "q", "--from", "user").id;
-    assert.equal(run.led("review", "--by", "fresh subagent", "--note", "too early").counts, false);
-    const claim = run.led("claim", "--question", q, "--kind", "mechanism", "--text", "x", "--source", src(run, "a", "docs"), "--quote", QUOTE).id;
+    const claim = run.led("claim", "--question", q, "--kind", "mechanism", "--text", "x", "--source", src(run, "a", "docs"), "--quote", QUOTE, "--agent", "main/a").id;
     run.led("cite", "--claim", claim, "--source", src(run, "b", "paper"), "--quote", QUOTE);
-    assert.equal(run.led("review", "--by", "another model", "--note", "missing the read-replica case").counts, true);
+    return q;
+  }
+
+  it("counts a review only once most of the tree was answered and every finding is closed", () => {
+    const run = newRun("standard");
+    run.led("question", "--text", "placeholder so the tree is not empty", "--from", "user");
+    run.led("park", "--question", "Q1", "--reason", "only here to open the run");
+    assert.equal(run.led("review", "--by", "fresh subagent", "--note", "too early").counts, false);
+    const q = answered(run);
+    assert.match(run.fail("review", "--by", "main/a", "--note", "looks fine"), /main\/a wrote part of this run/);
+    const review = run.led("review", "--by", "another model", "--note", "missing the read-replica case");
+    assert.deepEqual([review.review, review.counts], ["R2", true]);
+    assert.match(run.gate("review").problems.join("; "), /R2 names no finding/, "a review that is one line says nothing was checked");
+    const finding = run.led("finding", "--review", "R2", "--text", "the read-replica case is missing", "--question", q).id;
+    assert.match(run.gate("review").problems.join("; "), new RegExp(`R2 has open findings: ${finding}`));
+    assert.match(run.fail("close", "--finding", finding, "--how", "done", "--note", "x"), /fixed or rejected/);
+    run.led("close", "--finding", finding, "--how", "fixed", "--note", "asked it as a question and answered it");
+    assert.equal(run.gate("review").pass, true, run.gate("review").problems.join("; "));
+    assert.match(run.fail("close", "--finding", finding, "--how", "rejected", "--note", "x"), /already closed/);
+    run.led("render");
+    assert.match(fs.readFileSync(evidence(run, "ledger.md"), "utf8"), /\*\*F1\*\* \(Q2\) the read-replica case is missing — \*fixed\*: asked it as a question/);
+  });
+
+  it("takes a review that found nothing only when it says so", () => {
+    const run = newRun("standard");
+    answered(run);
+    run.led("review", "--by", "a fresh reader", "--note", "nothing missing; the weakest part is the single benchmark", "--clean");
     assert.equal(run.gate("review").pass, true);
   });
 });
@@ -570,6 +658,35 @@ describe("rounds", () => {
     assert.deepEqual(run.led("verify").problems, []);
   });
 
+  it("is done at standard depth only once the answer was searched against, audited and reviewed", async () => {
+    const run = newRun("standard");
+    const survey = src(run, "survey", "survey");
+    const claims = [1, 2, 3].map((i) => {
+      const topic = run.led("topic", "--text", `topic ${i}`, "--from", survey).id;
+      const q = run.led("question", "--text", `question ${i}`, "--topic", topic).id;
+      const claim = run.led("claim", "--question", q, "--kind", "mechanism", "--text", `how ${i}`, "--source", src(run, `docs-${i}`, "docs"), "--quote", QUOTE, "--agent", `main/b${i}`).id;
+      run.led("cite", "--claim", claim, "--source", src(run, `paper-${i}`, "paper"), "--quote", QUOTE, "--agent", `main/b${i}`);
+      return claim;
+    });
+    await run.checkQuotes();
+    const cited = claims.map((id) => `[${id}]`).join(" ");
+    const sections = ["Glossary", "Map of the field", "Decision guide", "Open questions"].map((name) => `## ${name}\n\n${PROSE}`);
+    writeReport(run, [`## Answer\n\nIt works like this ${cited}. ${PROSE}`, ...sections, "## Evidence", `See [the ledger](evidence/ledger.md). ${PROSE}`].join("\n\n"));
+    assert.deepEqual(run.score().gates.filter((gate) => !gate.pass).map((gate) => gate.name), ["review", "probe", "audit"]);
+    assert.equal(run.led("round", "--change", "answered and drafted").next, "iterate");
+    run.led("review", "--by", "a fresh reader", "--note", "nothing missing; the weakest part is that each answer rests on two sources", "--clean");
+    for (const id of claims) {
+      run.led("probe", "--claim", id, "--query", `topic pitfalls and failures ${id}`, "--found", "none", "--agent", "main/prober");
+      run.led("audit", "--claim", id, "--source", run.led("audit-queue").claims[0].citations[0].source, "--verdict", "supports", "--by", "verifier-1");
+    }
+    assert.equal(run.led("link-report").linked, 3);
+    const done = run.led("round", "--change", "probed, audited, reviewed");
+    assert.deepEqual([done.next, done.score], ["done", 1], JSON.stringify(done.gates));
+    const { warnings, ...verified } = run.led("verify");
+    assert.deepEqual(verified, { ok: true, score: 1, round: 1, problems: [] });
+    assert.match(warnings.join("; "), /127\.0\.0\.1 carries 7 different authors/, "one site under many names is pointed at, for the reviewer");
+  });
+
   it("escalates at the cap with the open gaps named, and refuses a round after the stop", () => {
     const run = newRun("quick", ["--cap", "1"]);
     const q = run.led("question", "--text", "q", "--from", "user").id;
@@ -599,6 +716,239 @@ describe("rounds", () => {
   });
 });
 
+describe("reading a quote as it is written", () => {
+  it("refuses a misquote of a web page on the spot, keeps a page's text, and leaves a locked page to a hand check", async () => {
+    const run = newRun("standard");
+    const q = run.led("question", "--text", "q", "--from", "user").id;
+    const page = run.led("source", "--url", `${base}/good`, "--kind", "docs", "--title", "g").id;
+    const claimArgs = (source, quote) => ["claim", "--question", q, "--kind", "mechanism", "--text", "x", "--source", source, "--quote", quote];
+    const wrong = await run.live(claimArgs(page, "a sentence the page never says at all"));
+    assert.equal(wrong.status, 1);
+    assert.match(wrong.error, /the quote is not in S1/);
+    assert.equal(run.events().filter((event) => event.t === "claim").length, 0, "a misquote is not recorded");
+    const right = await run.live(claimArgs(page, QUOTE));
+    assert.equal(right.result.check, "found");
+    assert.equal(run.gate("quotes").pass, true, "nothing waits for check-quotes");
+    const pages = fs.readdirSync(evidence(run, "pages"));
+    assert.ok(pages.includes(".gitignore") && pages.some((name) => /^S1-.*\.fetch\.txt$/.test(name)), pages.join(", "));
+    assert.equal(fs.readFileSync(evidence(run, "pages/.gitignore"), "utf8"), "*\n", "saved pages are other people's text and stay out of git");
+    const locked = run.led("source", "--url", `${base}/forbidden`, "--kind", "paper", "--title", "locked", "--authors", "locked").id;
+    const hand = await run.live(claimArgs(locked, "a sentence behind a paywall nobody can fetch"));
+    assert.equal(hand.result.check, "unverifiable");
+    assert.match(hand.result.next, /confirm-quote --claim C2 --source S2/);
+    run.led("confirm-quote", "--claim", hand.result.id, "--source", locked, "--how", "read it through the library proxy");
+    const gone = run.led("source", "--url", `${base}/gone`, "--kind", "spec", "--title", "gone").id;
+    assert.match((await run.live(claimArgs(gone, OTHER))).error, /S3 is gone \(HTTP 404\)/);
+  });
+
+  it("reads a page drawn by script with a browser, a dead page from the archive, and a talk from its captions", async () => {
+    const tools = fs.mkdtempSync(path.join(os.tmpdir(), "ultra-research-tools-"));
+    const tool = (name, body) => {
+      const file = path.join(tools, name);
+      fs.writeFileSync(file, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+      return file;
+    };
+    const browser = tool("browser", `echo '<html><body><p>${QUOTE}.</p> ${FILLER}</body></html>'`);
+    const captions = ["WEBVTT", "Kind: captions", "", "00:00:01.000 --> 00:00:03.000", "the <c>quick brown</c> fox", "", "00:00:03.000 --> 00:00:03.010", "the quick brown fox", "jumps over the lazy dog", "", "00:00:03.010 --> 00:00:05.000", "jumps over the lazy dog"].join("\\n");
+    const ytdlp = tool("yt-dlp", `while [ $# -gt 0 ]; do if [ "$1" = "-o" ]; then out="$2"; fi; shift; done\nprintf '${captions}\\n' > "$(dirname "$out")/talk.en.vtt"`);
+    const run = newRun("standard");
+    const q = run.led("question", "--text", "q", "--from", "user").id;
+    const claim = (source, quote, env) => run.live(["claim", "--question", q, "--kind", "mechanism", "--text", source, "--source", source, "--quote", quote], env);
+    const drawn = run.led("source", "--url", `${base}/script-only`, "--kind", "docs", "--title", "drawn").id;
+    assert.equal((await claim(drawn, QUOTE, { ULTRA_RESEARCH_READERS: "fetch" })).result.check, "unverifiable", "a plain fetch sees no text");
+    const second = run.led("source", "--url", `${base}/script-only?again`, "--kind", "docs", "--title", "drawn").id;
+    assert.equal((await claim(second, QUOTE, { ULTRA_RESEARCH_READERS: "fetch,browser", ULTRA_RESEARCH_BROWSER: browser })).result.check, "found (read by browser)");
+    const gone = run.led("source", "--url", `${base}/gone`, "--kind", "spec", "--title", "gone").id;
+    assert.equal((await claim(gone, OTHER, { ULTRA_RESEARCH_READERS: "fetch,archive", ULTRA_RESEARCH_ARCHIVE: `${base}/archive` })).result.check, "found (read by archive)");
+    const talk = run.led("source", "--url", "https://www.youtube.com/watch?v=abcdefghijk", "--kind", "talk", "--title", "talk").id;
+    assert.equal((await claim(talk, QUOTE, { ULTRA_RESEARCH_READERS: "captions", ULTRA_RESEARCH_YTDLP: ytdlp })).result.check, "found (read by captions)");
+    run.led("render");
+    assert.match(fs.readFileSync(evidence(run, "ledger.md"), "utf8"), /quote check: found \(read by captions\)/);
+    // What a talk says is in its captions: they can show a quote is missing, and when they fail nothing can.
+    const silent = tool("yt-dlp-silent", `while [ $# -gt 0 ]; do if [ "$1" = "-o" ]; then out="$2"; fi; shift; done\nprintf 'WEBVTT\\n\\n00:00:01.000 --> 00:00:09.000\\n${FILLER}\\n' > "$(dirname "$out")/talk.en.vtt"`);
+    const other = run.led("source", "--url", "https://youtu.be/lmnopqrstuv", "--kind", "talk", "--title", "another talk").id;
+    assert.match((await claim(other, QUOTE, { ULTRA_RESEARCH_READERS: "captions", ULTRA_RESEARCH_YTDLP: silent })).error, new RegExp(`the quote is not in ${other}`));
+    const broken = tool("yt-dlp-broken", "echo 'ERROR: Unable to download video subtitles: HTTP Error 429: Too Many Requests' >&2; exit 1");
+    const third = run.led("source", "--url", "https://youtu.be/wxyzabcdefg", "--kind", "talk", "--title", "a third talk").id;
+    const waits = await claim(third, QUOTE, { ULTRA_RESEARCH_READERS: "captions", ULTRA_RESEARCH_YTDLP: broken });
+    assert.equal(waits.result.check, "unverifiable");
+    assert.match(waits.result.reason, /yt-dlp failed \(Unable to download video subtitles: HTTP Error 429/);
+  });
+
+  it("matches a quote in a script written without spaces, however its source wrapped the line", async () => {
+    const run = newRun("standard");
+    const q = run.led("question", "--text", "q", "--from", "user").id;
+    const page = run.led("source", "--url", `${base}/ja`, "--kind", "talk", "--title", "ja").id;
+    const claim = (quote) => run.live(["claim", "--question", q, "--kind", "mechanism", "--text", "x", "--source", page, "--quote", quote]);
+    assert.match((await claim("口の周りに")).error, /at least 5 words/, "five characters are not five words");
+    assert.equal((await claim("口の周りに一切頂点を置かずに 非常に長い三角形で口の周りを構成")).result.check, "found");
+  });
+
+  it("checks only the work a researcher names", async () => {
+    const run = newRun("standard");
+    const q = run.led("question", "--text", "q", "--from", "user").id;
+    run.led("claim", "--question", q, "--kind", "mechanism", "--text", "x", "--source", src(run, "a", "docs"), "--quote", QUOTE, "--agent", "main/a");
+    run.led("claim", "--question", q, "--kind", "limit", "--text", "y", "--source", src(run, "b", "paper"), "--quote", QUOTE, "--agent", "main/b/helper");
+    assert.equal((await run.checkQuotes(["--agent", "main/b"])).result.checked, 1, "a branch and its helpers");
+    assert.equal((await run.checkQuotes(["--question", q])).result.checked, 1, "what is left of the question");
+    assert.equal((await run.checkQuotes()).result.checked, 0);
+    assert.match(ok(LEDGER, run.repo, ["status", "--dir", run.dir, "--question", q]), new RegExp(`^  ${q}: answered$`, "m"));
+  });
+});
+
+describe("the budget", () => {
+  it("stops new sources and questions at the budget, and takes more only at the user's word", () => {
+    const run = newRun("quick", ["--max-sources", "3", "--max-questions", "2"]);
+    const add = (name) => run.led("source", "--url", `https://${name}.example.com/p`, "--kind", "docs", "--title", name);
+    assert.equal(add("one").budget, "1/3 web sources");
+    assert.match(add("two").note, /the reading budget is spent/, "the last of the budget is kept for closing work");
+    add("three");
+    assert.match(run.fail("source", "--url", "https://four.example.com/p", "--kind", "docs", "--title", "four"), /the source budget is spent \(3\/3 web sources\)/);
+    fs.writeFileSync(path.join(run.repo, "notes.md"), `${QUOTE}\n`);
+    run.led("source", "--path", "notes.md", "--kind", "docs", "--title", "the project's own file costs no reading");
+    const q1 = run.led("question", "--text", "one", "--from", "user").id;
+    run.led("question", "--text", "two", "--from", "user");
+    assert.match(run.fail("question", "--text", "three", "--from", "user"), /the question budget is spent \(2\/2 in scope\)/);
+    run.led("park", "--question", q1, "--reason", "out of scope");
+    run.led("question", "--text", "three", "--from", "user");
+    assert.match(run.fail("budget", "--max-sources", "10"), /--reason is required/);
+    run.led("budget", "--max-sources", "10", "--reason", "the user said to go on");
+    add("four");
+    assert.match(ok(LEDGER, run.repo, ["status", "--dir", run.dir]), /budget: 4\/10 web sources \(reading stops at 8\) · 2\/2 questions/);
+  });
+
+  it("says wrap-up when the reading budget is spent, and stops after one closing round", () => {
+    const run = newRun("quick", ["--max-sources", "2"]);
+    const q = run.led("question", "--text", "q", "--from", "user").id;
+    run.led("question", "--text", "a second question nothing answers", "--from", "user");
+    const docs = src(run, "docs", "docs");
+    const wrap = run.led("round", "--change", "read one source");
+    assert.equal(wrap.next, "wrap-up");
+    assert.match(wrap.reason, /the reading budget is spent \(1\/2 web sources, reading stops at 1\)/);
+    assert.match(ok(LEDGER, run.repo, ["status", "--dir", run.dir]), /round 0 of 6 \(wrap-up: closing work only\)/);
+    run.led("claim", "--question", q, "--kind", "other", "--text", "x", "--source", docs, "--quote", QUOTE);
+    const stop = run.led("round", "--change", "wrote what the ledger holds");
+    assert.equal(stop.next, "escalate");
+    assert.match(stop.reason, /the source budget \(1\/2\) was spent at score .* Q2: /);
+  });
+});
+
+describe("the probe", () => {
+  it("wants a search against every claim the Answer cites, and turns what it finds into a dispute", () => {
+    const run = newRun("standard");
+    const q = run.led("question", "--text", "q", "--from", "user").id;
+    const a = src(run, "a", "docs");
+    const claim = run.led("claim", "--question", q, "--kind", "mechanism", "--text", "x", "--source", a, "--quote", QUOTE).id;
+    run.led("cite", "--claim", claim, "--source", src(run, "b", "paper"), "--quote", QUOTE);
+    assert.match(run.gate("probe").problems.join("; "), /no Answer yet/);
+    writeReport(run, `## Answer\n\nIt works like this [${claim}]. ${PROSE}`);
+    assert.match(run.gate("probe").problems.join("; "), new RegExp(`no search for evidence against ${claim}`));
+    assert.match(run.fail("probe", "--claim", claim, "--query", "x", "--found", "none"), /at least two/);
+    assert.match(run.fail("probe", "--claim", claim, "--query", "where it breaks", "--found", a, "--note", "n"), new RegExp(`${a} backs ${claim}`));
+    run.led("probe", "--claim", claim, "--query", "does it fail under concurrent writes", "--found", "none");
+    assert.equal(run.gate("probe").pass, true);
+    const rival = src(run, "rival", "paper");
+    assert.match(run.fail("probe", "--claim", claim, "--query", "benchmark regression", "--found", rival), /--note is required/);
+    const hit = run.led("probe", "--claim", claim, "--query", "benchmark regression", "--found", rival, "--note", "the rival measures the opposite");
+    assert.equal(hit.disputed, claim);
+    assert.ok(run.open(q).includes(`open dispute on ${claim}`), "what a probe finds blocks the question until it is settled");
+    run.led("render");
+    assert.match(fs.readFileSync(evidence(run, "ledger.md"), "utf8"), /searched against: "does it fail under concurrent writes" — nothing against it/);
+  });
+});
+
+describe("the audit", () => {
+  it("wants each claim the Answer cites read against its quote by someone who did not write it", async () => {
+    const run = newRun("standard");
+    const q = run.led("question", "--text", "how does it work", "--from", "user").id;
+    const a = src(run, "a", "docs");
+    const b = src(run, "b", "paper");
+    const claim = run.led("claim", "--question", q, "--kind", "mechanism", "--text", "x", "--source", a, "--quote", QUOTE, "--agent", "main/a").id;
+    run.led("cite", "--claim", claim, "--source", b, "--quote", QUOTE);
+    writeReport(run, `## Answer\n\nIt works like this [${claim}]. ${PROSE}`);
+    assert.match(run.gate("audit").problems.join("; "), new RegExp(`not audited yet: ${claim}`));
+    await run.checkQuotes();
+    const queue = run.led("audit-queue", "--context", "4");
+    assert.deepEqual([queue.waiting, queue.claims[0].claim, queue.claims[0].question], [1, claim, "how does it work"]);
+    assert.match(queue.claims[0].citations[0].context, /quick brown fox jumps over the lazy dog\. a second sentence that/);
+    assert.match(run.fail("audit", "--claim", claim, "--source", a, "--verdict", "supports", "--by", "main/a"), new RegExp(`main/a wrote ${claim}`));
+    assert.match(run.fail("audit", "--claim", claim, "--source", a, "--verdict", "partly", "--by", "verifier-1"), /--note is required/);
+    run.led("audit", "--claim", claim, "--source", a, "--verdict", "partly", "--by", "verifier-1", "--note", "the quote covers one case of two");
+    run.led("audit", "--claim", claim, "--source", a, "--verdict", "supports", "--by", "verifier-2");
+    assert.match(run.gate("audit").problems.join("; "), new RegExp(`${claim}/${a} was audited "partly"`), "a later yes does not undo a no on the same words");
+    run.led("audit", "--claim", claim, "--source", b, "--verdict", "supports", "--by", "verifier-2");
+    assert.equal(run.gate("audit").pass, false, "the weak citation still stands behind the claim");
+    assert.match(run.fail("uncite", "--claim", claim, "--source", "S9", "--reason", "r"), new RegExp(`${claim} does not cite S9`));
+    run.led("uncite", "--claim", claim, "--source", a, "--reason", "the quote covers one case of two");
+    assert.equal(run.gate("audit").pass, true, run.gate("audit").problems.join("; "));
+    assert.match(run.fail("uncite", "--claim", claim, "--source", b, "--reason", "r"), /the only source behind .* retract the claim instead/);
+    assert.equal(run.led("audit-queue").waiting, 0);
+  });
+});
+
+describe("the host's rules", () => {
+  it("refuses an experiment in a language the host ruled out", () => {
+    const run = newRun("quick", ["--experiment-langs", "c,c++,rust,go"]);
+    assert.match(run.fail("experiment", "--command", "python3 bench.py", "--title", "b"), /experiments in c, cpp, rust, go only .*this one is python/);
+    assert.match(run.fail("experiment", "--command", 'OMP_NUM_THREADS=8 sh -c "node bench.mjs"', "--title", "b"), /this one is javascript/);
+    run.led("experiment", "--command", "sh -c 'echo the compiled bench printed this line'", "--title", "a shell is glue, not the language");
+    assert.match(JSON.parse(exec(LEDGER, run.repo, ["start", "--slug", "x", "--goal", "g", "--experiment-langs", "cobol"]).stderr).error, /--experiment-langs takes/);
+  });
+});
+
+describe("the report's citations", () => {
+  it("lists what the report cites, links each claim id to it, and points at a measure with no claim", () => {
+    const run = newRun("quick");
+    const q = run.led("question", "--text", "q", "--from", "user").id;
+    const docs = src(run, "docs", "docs");
+    const claim = run.led("claim", "--question", q, "--kind", "other", "--text", "it is fast", "--source", docs, "--quote", QUOTE).id;
+    run.led("claim", "--question", q, "--kind", "other", "--text", "never cited", "--source", docs, "--quote", OTHER);
+    writeReport(run, `## Answer\n\nIt is fast [${claim}]. The second run took 12 ms on our table. ${PROSE}\n\n\`\`\`\nnot a citation: [${claim}]\n\`\`\`\n\n## Evidence\n\nOne source, read in full and quoted. ${PROSE}\n`);
+    const checked = run.led("check-report");
+    assert.equal(checked.ok, true);
+    assert.deepEqual(checked.warnings, ['the Answer states a measure without a claim id: "The second run took 12 ms on our table."']);
+    assert.equal(run.led("link-report").linked, 1);
+    const report = fs.readFileSync(path.join(run.dir, "research.md"), "utf8");
+    assert.match(report, new RegExp(`It is fast \\[${claim}\\]\\(evidence/cited\\.md#c1\\)\\.`));
+    assert.match(report, new RegExp(`not a citation: \\[${claim}\\]\\n`), "a code block is left alone");
+    assert.equal(run.led("link-report").linked, 0, "linking twice changes nothing");
+    assert.deepEqual(problemsOf(run), [], "a linked claim id is still a citation");
+    const cited = fs.readFileSync(evidence(run, "cited.md"), "utf8");
+    assert.match(cited, /<a id="c1"><\/a>\n\n### C1\n\n\*other\* — it is fast/);
+    assert.doesNotMatch(cited, /never cited/);
+  });
+});
+
+describe("older ledgers", () => {
+  it("keeps a ledger made before rules 2 under the rules it was made under", () => {
+    const run = newRun("standard");
+    const file = evidence(run, "ledger.jsonl");
+    const { v, maxSources, maxQuestions, script, ...init } = JSON.parse(fs.readFileSync(file, "utf8").trim());
+    assert.deepEqual([v, maxSources, maxQuestions], [2, 60, 15]);
+    assert.match(script.sha256, /^[0-9a-f]{64}$/);
+    fs.writeFileSync(file, `${JSON.stringify(init)}\n`);
+    assert.deepEqual(run.score().gates.map((gate) => gate.name), ["map", "saturation", "quotes", "review", "report"]);
+    assert.equal(run.score().budget, undefined);
+    const q = run.led("question", "--text", "q", "--from", "user").id;
+    const one = run.led("source", "--url", "https://docs.example.org/a", "--kind", "docs", "--title", "a", "--origin", "Team One").id;
+    const two = run.led("source", "--url", "https://docs.example.org/b", "--kind", "paper", "--title", "b", "--authors", "Ada Lovelace").id;
+    const claim = run.led("claim", "--question", q, "--kind", "mechanism", "--text", "x", "--source", one, "--quote", QUOTE).id;
+    run.led("cite", "--claim", claim, "--source", two, "--quote", QUOTE);
+    assert.deepEqual(run.open(q), [], "voices are still counted by origin");
+    run.led("review", "--by", "a reader", "--note", "one line was a review then");
+    assert.equal(run.gate("review").pass, true);
+  });
+
+  it("says when the script changed during a run", () => {
+    const run = newRun("quick");
+    const file = evidence(run, "ledger.jsonl");
+    const init = JSON.parse(fs.readFileSync(file, "utf8").trim());
+    fs.writeFileSync(file, `${JSON.stringify({ ...init, script: { version: "2.9.9", sha256: "0".repeat(64) } })}\n`);
+    const verify = JSON.parse(exec(LEDGER, run.repo, ["verify", "--dir", run.dir]).stdout);
+    assert.match(verify.warnings[0], /the script changed during the run \(started with 2\.9\.9, now /);
+  });
+});
+
 describe("the command line", () => {
   it("prints usage on --help and refuses a folder that is not a research folder", () => {
     assert.match(exec(LEDGER, os.tmpdir(), ["--help"]).stdout, /Usage: node ultra-research\.mjs/);
@@ -606,5 +956,19 @@ describe("the command line", () => {
     assert.equal(out.status, 1);
     assert.match(JSON.parse(out.stderr).error, /not a research folder/);
     assert.match(JSON.parse(exec(LEDGER, os.tmpdir(), ["start", "--slug", "Bad Slug", "--goal", "g"]).stderr).error, /lowercase words/);
+    assert.equal(exec(LEDGER, os.tmpdir(), ["--version"]).stdout.trim(), require("../package.json").version);
+  });
+
+  it("refuses a flag it does not know instead of dropping it, and takes a value that starts with dashes", () => {
+    const run = newRun("quick");
+    assert.match(run.fail("question", "--text", "how fast", "--from", "user", "--quantative"), /question has no flag --quantative \(did you mean --quantitative\?\)/);
+    assert.match(run.fail("source", "--url", "https://x.example.com/a", "--kind", "docs", "--title", "x", "--dat", "2020"), /did you mean --date\?/);
+    assert.match(run.fail("status", "stray"), /unexpected argument "stray"/);
+    assert.equal(run.events().length, 1, "nothing was recorded by a refused command");
+    const q = run.led("question", "--text", "how fast", "--from", "user", "--quantitative").id;
+    assert.match(run.fail("park", "--question", q, "--reason", "--not-needed"), /--reason needs a value \(for a value that starts with dashes, write --reason=<value>\)/);
+    run.led("park", "--question", q, "--reason=--not needed here");
+    assert.equal(run.events().at(-1).reason, "--not needed here");
+    assert.match(run.fail("review", "--by", "r", "--note", "n", "--clean=yes"), /--clean takes no value/);
   });
 });
